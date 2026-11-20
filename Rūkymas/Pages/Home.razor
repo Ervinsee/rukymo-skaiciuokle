@@ -1,0 +1,169 @@
+﻿@page "/"
+@using System.Globalization
+@using RukymasApp.Models
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+
+<PageTitle>Rūkymo išlaidų skaičiuoklė</PageTitle>
+
+<section class="app-page">
+
+    <div class="hero">
+        <span class="tag">ASMENINĖ STATISTIKA</span>
+
+        <h1>Kiek tau kainuoja rūkymas?</h1>
+
+        <p>
+            Sužinok, kiek cigarečių surūkai
+            ir kiek pinigų joms išleidi.
+        </p>
+    </div>
+
+    <div class="input-card">
+
+        <label for="diena">Cigarečių per dieną</label>
+        <input id="diena" type="number"
+               min="0" class="form-control"
+               @bind="cigaretesPerDiena" />
+
+        <label for="pakelis">Cigarečių pakelyje</label>
+        <input id="pakelis" type="number"
+               min="1" class="form-control"
+               @bind="cigaretesPakelyje" />
+
+        <label for="kaina">Pakelio kaina (€)</label>
+        <input id="kaina" type="text"
+               inputmode="decimal"
+               class="form-control"
+               @bind="kainosTekstas" />
+
+        <button class="calculate-btn"
+                @onclick="Skaiciuoti">
+            Skaičiuoti
+        </button>
+
+        @if (klaida != "")
+        {
+            <p class="text-danger mt-3">@klaida</p>
+        }
+
+    </div>
+
+    @if (rodytiRezultatus)
+    {
+        <div class="results">
+
+            <h2>Tavo rezultatai</h2>
+
+            <div class="results-grid">
+
+                <div class="result-card">
+                    <span>Per dieną</span>
+                    <strong>
+                        @islaidosPerDiena.ToString("N2", CultureInfo.GetCultureInfo("lt-LT")) €
+                    </strong>
+                </div>
+
+                <div class="result-card">
+                    <span>Per 30 dienų</span>
+                    <strong>
+                        @islaidosPerMenesi.ToString("N2", CultureInfo.GetCultureInfo("lt-LT")) €
+                    </strong>
+                </div>
+
+                <div class="result-card">
+                    <span>Per metus</span>
+                    <strong>
+                        @islaidosPerMetus.ToString("N2", CultureInfo.GetCultureInfo("lt-LT")) €
+                    </strong>
+                </div>
+
+                <div class="result-card">
+                    <span>Cigarečių per metus</span>
+                    <strong>@cigaretesPerMetus</strong>
+                </div>
+
+            </div>
+        </div>
+    }
+
+</section>
+
+@code {
+    private int cigaretesPerDiena = 10;
+    private int cigaretesPakelyje = 20;
+    private string kainosTekstas = "6,00";
+
+    private decimal islaidosPerDiena;
+    private decimal islaidosPerMenesi;
+    private decimal islaidosPerMetus;
+
+    private int cigaretesPerMetus;
+
+    private bool rodytiRezultatus = false;
+    private string klaida = "";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            string? diena = await JS.InvokeAsync<string?>(
+                "localStorage.getItem", "cigaretesPerDiena");
+
+            string? pakelis = await JS.InvokeAsync<string?>(
+                "localStorage.getItem", "cigaretesPakelyje");
+
+            string? kaina = await JS.InvokeAsync<string?>(
+                "localStorage.getItem", "pakelioKaina");
+
+            int skaicius;
+
+            if (int.TryParse(diena, out skaicius) && skaicius >= 0)
+                cigaretesPerDiena = skaicius;
+
+            if (int.TryParse(pakelis, out skaicius) && skaicius > 0)
+                cigaretesPakelyje = skaicius;
+
+            if (kaina != null)
+                kainosTekstas = kaina;
+
+            StateHasChanged();
+        }
+    }
+
+    private void Skaiciuoti()
+    {
+        decimal pakelioKaina;
+
+        string kainaTekstas =
+            kainosTekstas.Trim().Replace(',', '.');
+
+        if (!decimal.TryParse(
+                kainaTekstas,
+                NumberStyles.AllowDecimalPoint,
+                CultureInfo.InvariantCulture,
+                out pakelioKaina)
+            || pakelioKaina < 0
+            || cigaretesPerDiena < 0
+            || cigaretesPakelyje <= 0)
+        {
+            klaida = "Patikrink įvestus skaičius.";
+            rodytiRezultatus = false;
+            return;
+        }
+
+        Rukymas rukymas = new Rukymas(
+            cigaretesPerDiena,
+            cigaretesPakelyje,
+            pakelioKaina);
+
+        islaidosPerDiena = rukymas.DienosIslaidos();
+        islaidosPerMenesi = rukymas.MenesioIslaidos();
+        islaidosPerMetus = rukymas.MetuIslaidos();
+
+        cigaretesPerMetus = rukymas.MetuCigareciuKiekis();
+
+        klaida = "";
+        rodytiRezultatus = true;
+    }
+}
